@@ -69,7 +69,7 @@ function buildCouncil(question: string, stages: StageRow[]) {
   };
 }
 
-function serializeCouncil(row: Record<string, unknown> | null) {
+function serializeCouncil(row: Record<string, unknown> | null, turns: Record<string, unknown>[] = []) {
   if (!row) return null;
   return {
     id: row.id,
@@ -79,6 +79,13 @@ function serializeCouncil(row: Record<string, unknown> | null) {
     synthesis: JSON.parse(String(row.synthesis_json)),
     action: row.action_text,
     createdAt: row.created_at,
+    turns: turns.map((turn) => ({
+      id: turn.id,
+      stageKey: turn.stage_key,
+      userMessage: turn.user_message,
+      stageReply: turn.stage_reply,
+      createdAt: turn.created_at,
+    })),
   };
 }
 
@@ -93,7 +100,11 @@ export async function GET(request: Request) {
       FROM councils WHERE profile_id = ? ORDER BY created_at DESC LIMIT 1`)
     .bind(profile.id)
     .first<Record<string, unknown>>();
-  return Response.json({ council: serializeCouncil(row) });
+  const turns = row ? await database()
+    .prepare('SELECT id, stage_key, user_message, stage_reply, created_at FROM council_turns WHERE council_id = ? ORDER BY created_at ASC')
+    .bind(String(row.id))
+    .all<Record<string, unknown>>() : { results: [] };
+  return Response.json({ council: serializeCouncil(row, turns.results) });
 }
 
 export async function POST(request: Request) {
@@ -124,5 +135,5 @@ export async function POST(request: Request) {
     .run();
   await recordEvent(hash, 'council_completed', { category: result.category }, profile.id);
 
-  return Response.json({ council: { id, question, category: result.category, responses: result.responses, synthesis: result.synthesis, action: result.action, createdAt } });
+  return Response.json({ council: { id, question, category: result.category, responses: result.responses, synthesis: result.synthesis, action: result.action, createdAt, turns: [] } });
 }

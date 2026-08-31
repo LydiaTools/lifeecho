@@ -29,6 +29,14 @@ type CouncilResponse = {
   source: string;
 };
 
+type CouncilTurn = {
+  id: number;
+  stageKey: string;
+  userMessage: string;
+  stageReply: string;
+  createdAt: string;
+};
+
 type Council = {
   id: string;
   question: string;
@@ -37,6 +45,7 @@ type Council = {
   synthesis: { common: string; conflict: string; missing: string; decisionFrame: string };
   action: string;
   createdAt: string;
+  turns: CouncilTurn[];
 };
 
 type Screen = 'loading' | 'onboarding' | 'home' | 'council' | 'settings';
@@ -348,7 +357,29 @@ function CouncilView({ council, profile, token, onBack }: { council: Council; pr
   const [note, setNote] = useState('');
   const [saved, setSaved] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [turns, setTurns] = useState<CouncilTurn[]>(council.turns ?? []);
+  const [message, setMessage] = useState('');
+  const [dialogueBusy, setDialogueBusy] = useState(false);
+  const [dialogueError, setDialogueError] = useState('');
   const current = council.responses[active];
+  const currentTurns = turns.filter((turn) => turn.stageKey === current.id);
+
+  async function askStage(event: FormEvent) {
+    event.preventDefault();
+    if (message.trim().length < 2 || dialogueBusy) return;
+    setDialogueBusy(true);
+    setDialogueError('');
+    const response = await fetch('/api/dialogue', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ visitorToken: token, councilId: council.id, stageKey: current.id, message }),
+    });
+    const data = await response.json();
+    setDialogueBusy(false);
+    if (!response.ok) return setDialogueError(data.error ?? '追问失败，请重试。');
+    setTurns((existing) => [...existing, data.turn]);
+    setMessage('');
+  }
 
   async function saveFeedback(event: FormEvent) {
     event.preventDefault();
@@ -387,6 +418,21 @@ function CouncilView({ council, profile, token, onBack }: { council: Council; pr
           <div className="voice-heading"><div><span>{current.label}</span><h2>{current.role}</h2></div><span className="voice-kind">{current.kind === 'future' ? '假设情景' : '你的记忆'}</span></div>
           <blockquote>{current.statement}</blockquote>
           <div className="source-note"><span>来源</span>{current.source}</div>
+          {currentTurns.length > 0 && (
+            <div className="dialogue-thread" aria-live="polite">
+              {currentTurns.map((turn) => (
+                <div className="dialogue-exchange" key={turn.id}>
+                  <p className="user-bubble"><span>你</span>{turn.userMessage}</p>
+                  <p className="stage-bubble"><span>{current.label}</span>{turn.stageReply}</p>
+                </div>
+              ))}
+            </div>
+          )}
+          <form className="ask-stage-form" onSubmit={askStage}>
+            <label htmlFor={`ask-${current.id}`}>继续问{current.label}</label>
+            <div><input id={`ask-${current.id}`} value={message} onChange={(event) => setMessage(event.target.value)} placeholder="例如：你当时最怕失去什么？" maxLength={400} /><button disabled={dialogueBusy || message.trim().length < 2}>{dialogueBusy ? '…' : '发送'}</button></div>
+            {dialogueError && <p className="inline-error" role="alert">{dialogueError}</p>}
+          </form>
         </article>
         <div className="voice-progress">{active + 1} / {council.responses.length}</div>
       </section>

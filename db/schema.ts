@@ -64,6 +64,21 @@ export const councilFeedback = sqliteTable(
   (table) => [uniqueIndex('idx_feedback_council').on(table.councilId)],
 );
 
+export const councilTurns = sqliteTable(
+  'council_turns',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    councilId: text('council_id')
+      .notNull()
+      .references(() => councils.id, { onDelete: 'cascade' }),
+    stageKey: text('stage_key').notNull(),
+    userMessage: text('user_message').notNull(),
+    stageReply: text('stage_reply').notNull(),
+    createdAt: text('created_at').notNull(),
+  },
+  (table) => [index('idx_turns_council_created').on(table.councilId, table.createdAt)],
+);
+
 export const productEvents = sqliteTable(
   'product_events',
   {

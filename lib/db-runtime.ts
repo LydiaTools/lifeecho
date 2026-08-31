@@ -58,6 +58,14 @@ export async function ensureSchema() {
       note TEXT NOT NULL DEFAULT '',
       created_at TEXT NOT NULL
     )`),
+    db.prepare(`CREATE TABLE IF NOT EXISTS council_turns (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      council_id TEXT NOT NULL REFERENCES councils(id) ON DELETE CASCADE,
+      stage_key TEXT NOT NULL,
+      user_message TEXT NOT NULL,
+      stage_reply TEXT NOT NULL,
+      created_at TEXT NOT NULL
+    )`),
     db.prepare(`CREATE TABLE IF NOT EXISTS product_events (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       profile_id INTEGER REFERENCES profiles(id) ON DELETE SET NULL,
@@ -68,6 +76,7 @@ export async function ensureSchema() {
     )`),
     db.prepare('CREATE INDEX IF NOT EXISTS idx_life_stages_profile_order ON life_stages(profile_id, stage_order)'),
     db.prepare('CREATE INDEX IF NOT EXISTS idx_councils_profile_created ON councils(profile_id, created_at)'),
+    db.prepare('CREATE INDEX IF NOT EXISTS idx_turns_council_created ON council_turns(council_id, created_at)'),
     db.prepare('CREATE INDEX IF NOT EXISTS idx_events_name_created ON product_events(event_name, created_at)'),
   ]);
   initialized = true;

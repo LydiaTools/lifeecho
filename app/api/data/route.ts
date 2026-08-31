@@ -20,6 +20,12 @@ export async function GET(request: Request) {
       WHERE c.profile_id = ? ORDER BY c.created_at ASC`)
     .bind(found.profile.id)
     .all<Record<string, unknown>>();
+  const turns = await database()
+    .prepare(`SELECT t.id, t.council_id, t.stage_key, t.user_message, t.stage_reply, t.created_at
+      FROM council_turns t JOIN councils c ON c.id = t.council_id
+      WHERE c.profile_id = ? ORDER BY t.created_at ASC`)
+    .bind(found.profile.id)
+    .all<Record<string, unknown>>();
   return Response.json({
     exportedAt: new Date().toISOString(),
     profile: found.profile,
@@ -29,6 +35,7 @@ export async function GET(request: Request) {
       responses_json: JSON.parse(String(row.responses_json)),
       synthesis_json: JSON.parse(String(row.synthesis_json)),
     })),
+    dialogueTurns: turns.results,
   });
 }
 

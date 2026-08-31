@@ -8,6 +8,13 @@
       "when": 1788187045322,
       "tag": "0000_pink_talon",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1788187618532,
+      "tag": "0001_tranquil_tyrannus",
+      "breakpoints": true
     }
   ]
 }

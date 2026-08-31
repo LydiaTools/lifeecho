@@ -516,6 +516,19 @@ button { cursor: pointer; }
 .voice-card blockquote { margin: 30px 0 26px; font-family: "Songti SC", serif; font-size: 18px; line-height: 1.9; }
 .source-note { padding: 13px; border-radius: 13px; color: #766e74; background: rgba(234,228,232,.62); font-size: 10px; line-height: 1.65; }
 .source-note span { margin-right: 8px; color: #604f5c; font-weight: 800; }
+.dialogue-thread { display: grid; gap: 14px; margin-top: 22px; padding-top: 20px; border-top: 1px solid var(--line); }
+.dialogue-exchange { display: grid; gap: 8px; }
+.dialogue-exchange p { margin: 0; padding: 11px 13px; border-radius: 15px; font-size: 11px; line-height: 1.65; }
+.dialogue-exchange p span { display: block; margin-bottom: 4px; font-size: 8px; font-weight: 850; letter-spacing: .08em; }
+.user-bubble { max-width: 88%; justify-self: end; color: #fff; background: #786174; border-bottom-right-radius: 4px !important; }
+.stage-bubble { max-width: 94%; color: #5e555c; background: #f0ebe6; border-bottom-left-radius: 4px !important; }
+.ask-stage-form { display: grid; gap: 8px; margin-top: 20px; padding-top: 18px; border-top: 1px solid var(--line); }
+.ask-stage-form > label { color: #766371; font-size: 9px; font-weight: 800; letter-spacing: .06em; }
+.ask-stage-form > div { display: grid; grid-template-columns: 1fr auto; gap: 8px; }
+.ask-stage-form input { min-width: 0; height: 44px; padding: 0 12px; border: 1px solid rgba(80,61,77,.14); border-radius: 13px; outline: none; color: var(--ink); background: rgba(255,255,255,.75); font-size: 11px; }
+.ask-stage-form input:focus { border-color: #896e83; box-shadow: 0 0 0 3px rgba(104,74,100,.08); }
+.ask-stage-form button { padding: 0 14px; border: 0; border-radius: 13px; color: #fff; background: #70586a; font-size: 10px; font-weight: 800; }
+.ask-stage-form button:disabled { opacity: .4; cursor: not-allowed; }
 .voice-progress { margin-top: 9px; color: #948a92; font-family: Georgia, serif; font-size: 10px; text-align: center; }
 
 .synthesis-card, .experiment-card {
