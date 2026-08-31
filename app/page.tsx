@@ -1,6 +1,7 @@
 'use client';
 
-import { FormEvent, useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import type { FormEvent } from 'react';
 
 type Stage = {
   id?: number;
@@ -48,17 +49,39 @@ type Council = {
   turns: CouncilTurn[];
 };
 
-type Screen = 'loading' | 'onboarding' | 'home' | 'council' | 'settings';
+type Screen = 'loading' | 'ask' | 'setup' | 'creating' | 'council' | 'settings';
 
-const prompts = ['要不要辞职？', '要不要换一座城市？', '这段关系该继续吗？'];
+const prompts = ['要不要辞职？', '该换一座城市吗？', '这段关系还要继续吗？'];
+const dangerPattern = /(自杀|自残|不想活|结束生命|伤害自己|活不下去)/;
 
-const emptyStages: Stage[] = [
-  { ageLabel: '18', title: '', memory: '', value: '', stageType: 'past' },
-  { ageLabel: '25', title: '', memory: '', value: '', stageType: 'past' },
-  { ageLabel: '现在', title: '', memory: '', value: '', stageType: 'present' },
+const stageBlueprints = [
+  {
+    eyebrow: '过去 · 第一个转折',
+    question: '18 岁左右，哪次选择让你第一次按自己的想法走？',
+    hint: '一句话就够：发生了什么，你当时做了什么。',
+    title: '第一次为自己选择',
+    ageLabel: '18',
+    values: ['自由', '勇气', '被看见', '可能性', '家人', '安全感'],
+  },
+  {
+    eyebrow: '过去 · 一次改变',
+    question: '后来哪次经历，改变了你对稳定或成功的看法？',
+    hint: '可以是一份工作、一段关系、一次离开或低谷。',
+    title: '一次重要转弯',
+    ageLabel: '25',
+    values: ['成长', '稳定', '尊严', '关系', '独立', '成就感'],
+  },
+  {
+    eyebrow: '现在 · 真实处境',
+    question: '此刻，你最不想再继续忍受的是什么？',
+    hint: '不用写得漂亮，只写最真实的那一句。',
+    title: '现在的拉扯',
+    ageLabel: '现在',
+    values: ['自主', '安心', '投入感', '边界', '归属', '真实'],
+  },
 ];
 
-function deviceToken() {
+function getDeviceToken() {
   const key = 'lifeecho-visitor-token';
   const existing = window.localStorage.getItem(key);
   if (existing) return existing;
@@ -67,92 +90,116 @@ function deviceToken() {
   return created;
 }
 
-function ageOf(date: string) {
-  const diff = Date.now() - new Date(date).getTime();
-  const days = Math.max(0, Math.floor(diff / 86_400_000));
+function timeAgo(date: string) {
+  const days = Math.max(0, Math.floor((Date.now() - new Date(date).getTime()) / 86_400_000));
   if (days === 0) return '今天';
   if (days < 30) return `${days} 天前`;
   return `${Math.floor(days / 30)} 个月前`;
 }
 
-function Brand({ onHome }: { onHome: () => void }) {
-  return (
-    <button className="brand brand-button" onClick={onHome} aria-label="回声首页">
-      <span className="brand-mark">回</span>
-      <span>回声</span>
-    </button>
-  );
+function Logo() {
+  return <span className="lite-logo"><b>回</b><span>回声</span><small>轻量版</small></span>;
 }
 
 export default function Home() {
+  const [token] = useState(() => typeof window === 'undefined' ? '' : getDeviceToken());
   const [screen, setScreen] = useState<Screen>('loading');
-  const [token] = useState(() => typeof window === 'undefined' ? '' : deviceToken());
   const [profile, setProfile] = useState<Profile | null>(null);
   const [council, setCouncil] = useState<Council | null>(null);
   const [question, setQuestion] = useState('');
   const [error, setError] = useState('');
-  const [busy, setBusy] = useState(false);
   const [editing, setEditing] = useState(false);
 
+  function track(eventName: string, payload: Record<string, unknown> = {}) {
+    if (!token) return;
+    void fetch('/api/event', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ visitorToken: token, eventName, payload }),
+    });
+  }
+
   useEffect(() => {
-    const id = token || deviceToken();
+    const id = token || getDeviceToken();
     Promise.all([
       fetch(`/api/profile?visitorToken=${encodeURIComponent(id)}`).then((response) => response.json()),
       fetch(`/api/council?visitorToken=${encodeURIComponent(id)}`).then((response) => response.json()),
     ])
       .then(([profileData, councilData]) => {
-        const loaded = profileData.profile as Profile | null;
-        setProfile(loaded);
+        setProfile(profileData.profile ?? null);
         setCouncil(councilData.council ?? null);
-        setScreen(loaded ? 'home' : 'onboarding');
+        setScreen('ask');
+        void fetch('/api/event', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ visitorToken: id, eventName: 'light_entry', payload: { returning: Boolean(profileData.profile) } }),
+        });
       })
       .catch(() => {
         setError('暂时无法连接，请刷新后重试。');
-        setScreen('onboarding');
+        setScreen('ask');
       });
   }, [token]);
 
-  async function startCouncil(event?: FormEvent) {
+  async function begin(event?: FormEvent) {
     event?.preventDefault();
-    if (!question.trim() || busy) return;
-    setBusy(true);
-    setError('');
-    const response = await fetch('/api/council', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ visitorToken: token, question }),
-    });
-    const data = await response.json();
-    setBusy(false);
-    if (!response.ok) {
-      setError(data.error ?? '生成失败，请重试。');
+    const cleanQuestion = question.trim();
+    if (cleanQuestion.length < 4) {
+      setError('再具体一点点，例如“我该不该离开现在的工作？”');
       return;
     }
-    setCouncil(data.council);
-    setScreen('council');
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+    if (dangerPattern.test(cleanQuestion)) {
+      setError('这已经超出选择工具能安全支持的范围。请先联系身边可信任的人或专业机构；如有立即危险，请拨打 120 或 110。你不必独自处理。');
+      return;
+    }
+    setError('');
+    track('question_started', { hasProfile: Boolean(profile) });
+    if (!profile) {
+      setEditing(false);
+      setScreen('setup');
+      return;
+    }
+    await createCouncil();
   }
 
-  if (screen === 'loading') {
-    return (
-      <main className="app-shell centered-screen">
-        <div className="echo-loader"><span>回</span></div>
-        <p>正在找回你的人生线…</p>
-      </main>
-    );
+  async function createCouncil() {
+    setScreen('creating');
+    setError('');
+    try {
+      const response = await fetch('/api/council', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ visitorToken: token, question }),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error ?? '生成失败，请重试。');
+      setCouncil(data.council);
+      setScreen('council');
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : '生成失败，请重试。');
+      setScreen('ask');
+    }
   }
 
-  if (screen === 'onboarding') {
+  if (screen === 'loading') return <LoadingScreen label="正在找回你的人生线…" />;
+  if (screen === 'creating') return <CreatingScreen question={question} />;
+
+  if (screen === 'setup') {
     return (
-      <Onboarding
+      <SetupFlow
         token={token}
         existing={editing ? profile : null}
-        onCancel={profile ? () => { setEditing(false); setScreen('home'); } : undefined}
-        onSaved={(saved) => {
+        onTrack={track}
+        onCancel={profile ? () => setScreen('settings') : () => setScreen('ask')}
+        onSaved={async (saved) => {
           setProfile(saved);
-          setEditing(false);
-          setScreen('home');
-          window.scrollTo({ top: 0, behavior: 'smooth' });
+          if (editing) {
+            setEditing(false);
+            setScreen('ask');
+          } else {
+            await createCouncil();
+          }
         }}
       />
     );
@@ -163,8 +210,8 @@ export default function Home() {
       <Settings
         token={token}
         profile={profile}
-        onBack={() => setScreen('home')}
-        onEdit={() => { setEditing(true); setScreen('onboarding'); }}
+        onBack={() => setScreen('ask')}
+        onEdit={() => { setEditing(true); setScreen('setup'); }}
         onDeleted={() => {
           window.localStorage.removeItem('lifeecho-visitor-token');
           window.location.reload();
@@ -174,316 +221,385 @@ export default function Home() {
   }
 
   if (screen === 'council' && council && profile) {
-    return <CouncilView council={council} profile={profile} token={token} onBack={() => setScreen('home')} />;
+    return (
+      <CouncilChat
+        council={council}
+        token={token}
+        onTrack={track}
+        onBack={() => setScreen('ask')}
+      />
+    );
   }
 
   return (
-    <main className="app-shell">
-      <header className="topbar">
-        <Brand onHome={() => setScreen('home')} />
-        <button className="profile-button" onClick={() => setScreen('settings')} aria-label="打开个人资料">
-          {profile?.name.slice(0, 1) ?? '我'}
-        </button>
+    <AskScreen
+      profile={profile}
+      council={council}
+      question={question}
+      error={error}
+      onQuestion={setQuestion}
+      onBegin={begin}
+      onOpenCouncil={() => council && setScreen('council')}
+      onSettings={() => profile && setScreen('settings')}
+    />
+  );
+}
+
+function AskScreen({ profile, council, question, error, onQuestion, onBegin, onOpenCouncil, onSettings }: {
+  profile: Profile | null;
+  council: Council | null;
+  question: string;
+  error: string;
+  onQuestion: (value: string) => void;
+  onBegin: (event: FormEvent) => void;
+  onOpenCouncil: () => void;
+  onSettings: () => void;
+}) {
+  return (
+    <main className="phone-app ask-screen">
+      <header className="lite-topbar">
+        <Logo />
+        {profile ? <button className="round-icon" onClick={onSettings} aria-label="打开我的资料">{profile.name.slice(0, 1)}</button> : <span className="beta-pill">30 人内测</span>}
       </header>
 
-      <section className="hero" id="top">
-        <div className="eyebrow"><span /> 你的 {profile?.stages.length ?? 0} 段人生已经点亮</div>
-        <h1>今天，想和哪一段<br />自己谈谈？</h1>
-        <p>把一个真实选择带进来。过去的你、现在的你和两种可能的未来，会一起帮你看清取舍。</p>
+      <section className="ask-main">
+        <div className="time-chip"><span />无需注册 · 约 2 分钟</div>
+        <h1>{profile ? `${profile.name}，现在最难决定的，` : '把一个现在的难题，'}<br />说出来。</h1>
+        <p>过去的你、现在的你和两种可能的未来，会围绕这一个问题开场对话。</p>
 
-        <form className="question-card" onSubmit={startCouncil}>
-          <label htmlFor="question">我正在纠结</label>
-          <div className="question-row">
-            <textarea
-              id="question"
-              value={question}
-              onChange={(event) => setQuestion(event.target.value)}
-              placeholder="例如：我该不该离开现在这份工作？"
-              rows={2}
-              maxLength={180}
-            />
-            <button className="start-button" disabled={!question.trim() || busy}>
-              {busy ? '生成中' : '开始'}<span>→</span>
-            </button>
+        <form className="ask-card" onSubmit={onBegin}>
+          <label htmlFor="life-question">我正在纠结</label>
+          <textarea
+            id="life-question"
+            value={question}
+            onChange={(event) => onQuestion(event.target.value)}
+            placeholder="例如：我该不该离开现在这份工作？"
+            rows={4}
+            maxLength={180}
+            autoFocus
+          />
+          <div className="suggestion-row" aria-label="问题示例">
+            {prompts.map((prompt) => <button type="button" key={prompt} onClick={() => onQuestion(prompt)}>{prompt}</button>)}
           </div>
-          <div className="prompt-list" aria-label="问题示例">
-            {prompts.map((prompt) => <button type="button" key={prompt} onClick={() => setQuestion(prompt)}>{prompt}</button>)}
-          </div>
-          {error && <p className="inline-error" role="alert">{error}</p>}
-          <div className="privacy-note"><span>◇</span> 只有你能看到。系统不替你做决定，未来内容是情景推演。</div>
+          {error && <p className="lite-error" role="alert">{error}</p>}
+          <button className="main-cta" disabled={question.trim().length < 4}>开始自我议会 <span>→</span></button>
         </form>
-      </section>
 
-      <section className="timeline-section" aria-labelledby="timeline-title">
-        <div className="section-heading">
-          <div><span className="kicker">MY TIMELINE</span><h2 id="timeline-title">我的人生线</h2></div>
-          <button className="text-button" onClick={() => { setEditing(true); setScreen('onboarding'); }}>管理记忆 <span>→</span></button>
-        </div>
-        <div className="timeline-track" role="list">
-          {profile?.stages.map((stage, index) => (
-            <article role="listitem" key={stage.id ?? `${stage.ageLabel}-${index}`} className={`stage-card ${['amber', 'plum', 'blue'][index % 3]}`}>
-              <span className="stage-age">{stage.ageLabel}</span>
-              <span className="stage-title">{stage.title}</span>
-              <span className="stage-note">{stage.value}</span>
-              <span className="stage-status">真实记忆 · 可追溯</span>
-            </article>
-          ))}
-          <article className="stage-card future" role="listitem">
-            <span className="stage-age">+3年</span>
-            <span className="stage-title">两种可能</span>
-            <span className="stage-note">不是预言，是情景推演</span>
-            <span className="stage-status">情景分支</span>
-          </article>
+        <div className="trust-strip">
+          <span>◇ 记忆可追溯</span><span>◇ 未来非预测</span><span>◇ 随时可删除</span>
         </div>
       </section>
 
-      <section className="recent-section" aria-labelledby="recent-title">
-        <div className="section-heading">
-          <div><span className="kicker">LAST COUNCIL</span><h2 id="recent-title">上一次议会</h2></div>
-          {council && <span className="date-label">{ageOf(council.createdAt)}</span>}
-        </div>
-        {council ? (
-          <article className="decision-card">
-            <AvatarRow />
-            <div className="decision-copy">
-              <h3>“{council.question}”</h3>
-              <p>{council.synthesis.conflict}</p>
-            </div>
-            <div className="action-pill"><span>7 天实验</span>{council.action}</div>
-            <button className="review-button" onClick={() => setScreen('council')}>查看并记录实际发生了什么 <span>→</span></button>
-          </article>
-        ) : (
-          <div className="empty-card"><span>第一场议会还没开始</span><p>答案不会凭空出现，它会引用你刚刚写下的真实记忆。</p></div>
-        )}
-      </section>
-
-      <BottomNav onHome={() => setScreen('home')} onNew={() => document.getElementById('question')?.focus()} onCouncil={() => council && setScreen('council')} onSettings={() => setScreen('settings')} />
+      {council && (
+        <button className="recent-mini" onClick={onOpenCouncil}>
+          <span><small>{timeAgo(council.createdAt)}的议会</small><strong>“{council.question}”</strong></span>
+          <b>继续 →</b>
+        </button>
+      )}
     </main>
   );
 }
 
-function Onboarding({ token, existing, onSaved, onCancel }: {
+function SetupFlow({ token, existing, onSaved, onCancel, onTrack }: {
   token: string;
   existing: Profile | null;
-  onSaved: (profile: Profile) => void;
-  onCancel?: () => void;
+  onSaved: (profile: Profile) => void | Promise<void>;
+  onCancel: () => void;
+  onTrack: (name: string, payload?: Record<string, unknown>) => void;
 }) {
-  const [name, setName] = useState(existing?.name ?? '');
-  const [age, setAge] = useState(existing?.currentAge ? String(existing.currentAge) : '');
-  const [stages, setStages] = useState<Stage[]>(existing?.stages.map((stage) => ({ ...stage })) ?? emptyStages.map((stage) => ({ ...stage })));
+  const [step, setStep] = useState(0);
+  const [name, setName] = useState(existing?.name ?? '我');
+  const [age, setAge] = useState(existing ? String(existing.currentAge) : '');
   const [consent, setConsent] = useState(Boolean(existing));
-  const [busy, setBusy] = useState(false);
+  const [stages, setStages] = useState<Stage[]>(existing?.stages.map((stage) => ({ ...stage })) ?? stageBlueprints.map((item, index) => ({
+    ageLabel: item.ageLabel,
+    title: item.title,
+    memory: '',
+    value: '',
+    stageType: index === 2 ? 'present' : 'past',
+  })));
   const [error, setError] = useState('');
+  const [busy, setBusy] = useState(false);
+  const isMemoryStep = step > 0;
+  const stageIndex = step - 1;
+  const stage = stages[stageIndex];
+  const blueprint = stageBlueprints[stageIndex];
 
-  function updateStage(index: number, field: keyof Stage, value: string) {
-    setStages((current) => current.map((stage, position) => position === index ? { ...stage, [field]: value } : stage));
+  function patchStage(index: number, patch: Partial<Stage>) {
+    setStages((current) => current.map((item, position) => position === index ? { ...item, ...patch } : item));
   }
 
-  async function save(event: FormEvent) {
-    event.preventDefault();
+  function next() {
+    setError('');
+    if (step === 0) {
+      const numericAge = Number(age);
+      if (!Number.isInteger(numericAge) || numericAge < 18 || numericAge > 100) return setError('请输入真实年龄，本次内测仅限 18 岁以上。');
+      if (!consent) return setError('请先确认使用边界与资料处理方式。');
+      const secondAge = String(Math.max(19, numericAge - 5));
+      setStages((current) => current.map((item, index) => index === 1 && item.ageLabel === '25' ? { ...item, ageLabel: secondAge } : item));
+      onTrack('setup_step_completed', { step: 'identity' });
+      setStep(1);
+      return;
+    }
+    if (stage.memory.trim().length < 8) return setError('再多写一点点，至少让未来的回答能引用一件真实发生的事。');
+    if (!stage.value) return setError('请选择这段人生当时最想守住的东西。');
+    onTrack('setup_step_completed', { step: stageIndex + 1 });
+    if (step < 3) setStep((current) => current + 1);
+    else void save();
+  }
+
+  async function save() {
     setBusy(true);
     setError('');
-    const response = await fetch('/api/profile', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ visitorToken: token, name, currentAge: Number(age), stages, consent }),
-    });
-    const data = await response.json();
-    setBusy(false);
-    if (!response.ok) return setError(data.error ?? '保存失败，请检查后重试。');
-    onSaved(data.profile);
+    try {
+      const response = await fetch('/api/profile', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ visitorToken: token, name: name.trim() || '我', currentAge: Number(age), stages, consent }),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error ?? '保存失败，请重试。');
+      await onSaved(data.profile);
+    } catch (caught) {
+      setBusy(false);
+      setError(caught instanceof Error ? caught.message : '保存失败，请重试。');
+    }
   }
 
   return (
-    <main className="app-shell onboarding-shell">
-      <header className="topbar">
-        <Brand onHome={() => onCancel?.()} />
-        <span className="beta-chip">30 人内测</span>
+    <main className="phone-app setup-screen">
+      <header className="flow-topbar">
+        <button onClick={step === 0 ? onCancel : () => setStep((current) => current - 1)} aria-label="返回">←</button>
+        <div className="progress-track"><span style={{ width: `${((step + 1) / 4) * 100}%` }} /></div>
+        <small>{step + 1}/4</small>
       </header>
-      <section className="onboarding-intro">
-        <span className="kicker">8 MIN · LIFE MAP</span>
-        <h1>{existing ? '更新你的人生线' : '先让“过去的你”有据可依'}</h1>
-        <p>参考 Future You 的结构化建档、Rosebud 的记忆追问与 Day One 的时间线：只收集会影响回答的最少信息。</p>
-      </section>
 
-      <form className="onboarding-form" onSubmit={save}>
-        <section className="form-section identity-grid">
-          <label><span>怎么称呼你</span><input value={name} onChange={(event) => setName(event.target.value)} placeholder="例如：小林" maxLength={24} required /></label>
-          <label><span>现在的年龄</span><input type="number" min="18" max="100" value={age} onChange={(event) => setAge(event.target.value)} placeholder="28" required /></label>
-        </section>
-
-        <div className="form-heading">
-          <h2>三个真实阶段</h2>
-          <p>每段只写一件对你产生过影响的事。过去的阶段不会知道后来才发生的内容。</p>
-        </div>
-
-        {stages.map((stage, index) => (
-          <section className={`memory-form-card tone-${index}`} key={index}>
-            <div className="memory-card-head">
-              <span className="step-number">0{index + 1}</span>
-              <div><strong>{index === stages.length - 1 ? '现在的我' : '过去的我'}</strong><small>{index === 0 ? '一次离开、选择或觉醒' : index === 1 ? '一次低谷、转折或承担' : '此刻最在意的处境'}</small></div>
-            </div>
-            <div className="two-fields">
-              <label><span>当时年龄</span><input value={stage.ageLabel} onChange={(event) => updateStage(index, 'ageLabel', event.target.value)} maxLength={12} required /></label>
-              <label><span>给这段人生一个标题</span><input value={stage.title} onChange={(event) => updateStage(index, 'title', event.target.value)} placeholder="例如：第一次离开家" maxLength={40} required /></label>
-            </div>
-            <label><span>一段会影响今天选择的真实记忆</span><textarea value={stage.memory} onChange={(event) => updateStage(index, 'memory', event.target.value)} placeholder="发生了什么？你当时做了什么？它怎样改变了你？" rows={4} maxLength={600} required /></label>
-            <label><span>那时最想守住什么</span><input value={stage.value} onChange={(event) => updateStage(index, 'value', event.target.value)} placeholder="例如：自由、被看见、家人、安全感" maxLength={60} required /></label>
-          </section>
-        ))}
-
-        <section className="boundary-card">
-          <strong>使用边界</strong>
-          <p>这是人生选择反思工具，不是心理咨询、医疗建议或未来预测。系统会保存你主动填写的资料，只有持有本设备凭证的人能访问；你可以随时导出或删除。</p>
-          <label className="check-row">
+      {!isMemoryStep ? (
+        <section className="setup-panel identity-panel">
+          <span className="flow-kicker">开始前 · 20 秒</span>
+          <h1>先确认是谁在<br />参加这场议会。</h1>
+          <p>无需注册账号。浏览器只保存一个随机设备凭证。</p>
+          <div className="compact-fields">
+            <label><span>怎么称呼你</span><input value={name} onChange={(event) => setName(event.target.value)} maxLength={24} placeholder="我" /></label>
+            <label><span>现在年龄</span><input type="number" min="18" max="100" value={age} onChange={(event) => setAge(event.target.value)} inputMode="numeric" placeholder="28" /></label>
+          </div>
+          <label className="consent-card">
             <input type="checkbox" checked={consent} onChange={(event) => setConsent(event.target.checked)} />
-            <span>我已满 18 岁，并同意以上边界与资料处理方式</span>
+            <span><strong>我已满 18 岁并了解使用边界</strong><small>这是人生选择反思工具，不是心理咨询、医疗建议或未来预测。资料可随时导出或删除。</small></span>
           </label>
         </section>
-        {error && <p className="inline-error" role="alert">{error}</p>}
-        <div className="form-actions">
-          {onCancel && <button type="button" className="secondary-button" onClick={onCancel}>取消</button>}
-          <button className="primary-button" disabled={busy || !consent}>{busy ? '正在保存…' : existing ? '保存人生线' : '点亮我的人生线 →'}</button>
-        </div>
-      </form>
+      ) : (
+        <section className="setup-panel memory-panel">
+          <span className="flow-kicker">{blueprint.eyebrow}</span>
+          <h1>{blueprint.question}</h1>
+          <p>{blueprint.hint}</p>
+          <label className="memory-input">
+            <span>一件真实发生的事</span>
+            <textarea value={stage.memory} onChange={(event) => patchStage(stageIndex, { memory: event.target.value })} rows={6} maxLength={600} placeholder="我记得……" autoFocus />
+          </label>
+          {stageIndex < 2 && (
+            <label className="age-inline"><span>那时大约</span><input value={stage.ageLabel} onChange={(event) => patchStage(stageIndex, { ageLabel: event.target.value })} maxLength={12} /><span>岁</span></label>
+          )}
+          <fieldset className="value-picker">
+            <legend>当时最想守住什么？</legend>
+            <div>{blueprint.values.map((value) => <button type="button" key={value} className={stage.value === value ? 'selected' : ''} onClick={() => patchStage(stageIndex, { value })}>{value}</button>)}</div>
+            <input value={blueprint.values.includes(stage.value) ? '' : stage.value} onChange={(event) => patchStage(stageIndex, { value: event.target.value })} placeholder="或自己写一个词" maxLength={60} />
+          </fieldset>
+        </section>
+      )}
+
+      <footer className="flow-footer">
+        {error && <p className="lite-error" role="alert">{error}</p>}
+        <button className="main-cta" onClick={next} disabled={busy}>{busy ? '正在点亮…' : step === 3 ? '召集我的自我议会 →' : '下一步 →'}</button>
+        <small>{step === 0 ? '只有你能通过本设备凭证查看' : '过去的阶段不会知道后来才发生的事'}</small>
+      </footer>
     </main>
   );
 }
 
-function CouncilView({ council, profile, token, onBack }: { council: Council; profile: Profile; token: string; onBack: () => void }) {
+function CouncilChat({ council, token, onBack, onTrack }: {
+  council: Council;
+  token: string;
+  onBack: () => void;
+  onTrack: (name: string, payload?: Record<string, unknown>) => void;
+}) {
   const [active, setActive] = useState(0);
-  const [score, setScore] = useState(0);
-  const [wouldReturn, setWouldReturn] = useState(true);
-  const [note, setNote] = useState('');
-  const [saved, setSaved] = useState(false);
-  const [busy, setBusy] = useState(false);
   const [turns, setTurns] = useState<CouncilTurn[]>(council.turns ?? []);
   const [message, setMessage] = useState('');
-  const [dialogueBusy, setDialogueBusy] = useState(false);
-  const [dialogueError, setDialogueError] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const [showSummary, setShowSummary] = useState(false);
+  const [shareState, setShareState] = useState('');
   const current = council.responses[active];
   const currentTurns = turns.filter((turn) => turn.stageKey === current.id);
 
-  async function askStage(event: FormEvent) {
+  async function ask(event: FormEvent) {
     event.preventDefault();
-    if (message.trim().length < 2 || dialogueBusy) return;
-    setDialogueBusy(true);
-    setDialogueError('');
+    if (message.trim().length < 2 || busy) return;
+    if (dangerPattern.test(message)) {
+      setError('这已经超出本工具能安全支持的范围。请联系可信任的人或专业机构；如有立即危险，请拨打 120 或 110。');
+      return;
+    }
+    setBusy(true);
+    setError('');
     const response = await fetch('/api/dialogue', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ visitorToken: token, councilId: council.id, stageKey: current.id, message }),
     });
     const data = await response.json();
-    setDialogueBusy(false);
-    if (!response.ok) return setDialogueError(data.error ?? '追问失败，请重试。');
+    setBusy(false);
+    if (!response.ok) return setError(data.error ?? '追问失败，请重试。');
     setTurns((existing) => [...existing, data.turn]);
     setMessage('');
+    setTimeout(() => document.getElementById('chat-end')?.scrollIntoView({ behavior: 'smooth' }), 30);
   }
 
-  async function saveFeedback(event: FormEvent) {
-    event.preventDefault();
+  async function shareAction() {
+    const text = `我的回声行动卡\n\n我正在面对：${council.question}\n\n7 天小实验：${council.action}\n\n未来不是预测，先用现实证据再决定。`;
+    try {
+      if (navigator.share) await navigator.share({ title: '我的回声行动卡', text });
+      else {
+        await navigator.clipboard.writeText(text);
+        setShareState('已复制，可以粘贴到小红书');
+      }
+      onTrack('action_shared', { category: council.category });
+    } catch {
+      setShareState('分享已取消');
+    }
+  }
+
+  return (
+    <main className="phone-app chat-screen">
+      <header className="chat-topbar">
+        <button onClick={onBack} aria-label="返回">←</button>
+        <span><strong>本次自我议会</strong><small>{council.category} · 未来非预测</small></span>
+        <button className="summary-icon" onClick={() => setShowSummary(true)} aria-label="查看议会结论">结论</button>
+      </header>
+
+      <section className="chat-scroll">
+        <div className="user-question"><span>你</span><p>{council.question}</p></div>
+        <p className="system-note">过去的阶段只依据你当时的真实记忆；+3 年是情景推演。</p>
+
+        <div className="stage-switcher" role="tablist" aria-label="选择人生阶段">
+          {council.responses.map((response, index) => (
+            <button key={response.id} role="tab" aria-selected={active === index} className={active === index ? 'selected' : ''} onClick={() => { setActive(index); setMessage(''); setError(''); }}>
+              <b>{response.kind === 'future' ? '+3' : response.label.replace(' 岁的我', '').replace('现在的我', '今')}</b>
+              <small>{response.kind === 'future' ? (index === council.responses.length - 2 ? '改变' : '维持') : response.role.slice(0, 6)}</small>
+            </button>
+          ))}
+        </div>
+
+        <article className={`stage-message ${current.kind === 'future' ? 'future-message' : ''}`}>
+          <header><span><b>{current.label}</b><small>{current.role}</small></span><em>{current.kind === 'future' ? '假设情景' : '真实记忆'}</em></header>
+          <p>{current.statement}</p>
+          <details><summary>查看依据</summary><div>{current.source}</div></details>
+        </article>
+
+        {currentTurns.map((turn) => (
+          <div className="turn-pair" key={turn.id}>
+            <div className="turn-user">{turn.userMessage}</div>
+            <div className="turn-stage"><span>{current.label}</span>{turn.stageReply}</div>
+          </div>
+        ))}
+
+        <button className="summary-teaser" onClick={() => setShowSummary(true)}>
+          <span><small>五个阶段已经说完</small><strong>看共同结论和 7 天实验</strong></span><b>→</b>
+        </button>
+        <div id="chat-end" />
+      </section>
+
+      <form className="chat-composer" onSubmit={ask}>
+        {error && <p className="composer-error">{error}</p>}
+        <div><input value={message} onChange={(event) => setMessage(event.target.value)} placeholder={`继续问${current.label}…`} maxLength={400} /><button disabled={busy || message.trim().length < 2}>{busy ? '…' : '↑'}</button></div>
+      </form>
+
+      {showSummary && (
+        <SummarySheet
+          council={council}
+          token={token}
+          shareState={shareState}
+          onClose={() => setShowSummary(false)}
+          onShare={shareAction}
+        />
+      )}
+    </main>
+  );
+}
+
+function SummarySheet({ council, token, shareState, onClose, onShare }: {
+  council: Council;
+  token: string;
+  shareState: string;
+  onClose: () => void;
+  onShare: () => void;
+}) {
+  const [score, setScore] = useState(0);
+  const [wouldReturn, setWouldReturn] = useState(true);
+  const [note, setNote] = useState('');
+  const [saved, setSaved] = useState(false);
+
+  async function saveFeedback() {
     if (!score) return;
-    setBusy(true);
     const response = await fetch('/api/feedback', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ visitorToken: token, councilId: council.id, helpfulness: score, wouldReturn, note }),
     });
-    setBusy(false);
     if (response.ok) setSaved(true);
   }
 
   return (
-    <main className="app-shell council-shell">
-      <header className="topbar">
-        <button className="back-button" onClick={onBack}>← 返回</button>
-        <span className="trust-label">结构化推演 · 非预测</span>
-      </header>
-      <section className="council-hero">
-        <span className="kicker">SELF COUNCIL · {council.category}</span>
-        <h1>“{council.question}”</h1>
-        <p>{profile.name}，每个阶段只引用你提供的经历；未来分支都明确标为假设。</p>
-      </section>
-
-      <section className="voices-section">
-        <div className="voice-tabs" role="tablist" aria-label="人生阶段观点">
-          {council.responses.map((response, index) => (
-            <button key={response.id} role="tab" aria-selected={active === index} className={active === index ? 'active' : ''} onClick={() => setActive(index)}>
-              {response.kind === 'future' ? '+3' : response.label.replace(' 岁的我', '').replace('现在的我', '今')}
-            </button>
-          ))}
+    <div className="sheet-backdrop" role="dialog" aria-modal="true" aria-label="议会结论">
+      <section className="summary-sheet">
+        <button className="sheet-close" onClick={onClose} aria-label="关闭">×</button>
+        <span className="flow-kicker">COUNCIL NOTES</span>
+        <h2>不是替你投票，<br />而是找到真正的拉扯。</h2>
+        <div className="summary-points">
+          <p><span>共同在保护</span>{council.synthesis.common}</p>
+          <p><span>真正的冲突</span>{council.synthesis.conflict}</p>
+          <p><span>还缺的证据</span>{council.synthesis.missing}</p>
         </div>
-        <article className={`voice-card ${current.kind === 'future' ? 'future-voice' : ''}`}>
-          <div className="voice-heading"><div><span>{current.label}</span><h2>{current.role}</h2></div><span className="voice-kind">{current.kind === 'future' ? '假设情景' : '你的记忆'}</span></div>
-          <blockquote>{current.statement}</blockquote>
-          <div className="source-note"><span>来源</span>{current.source}</div>
-          {currentTurns.length > 0 && (
-            <div className="dialogue-thread" aria-live="polite">
-              {currentTurns.map((turn) => (
-                <div className="dialogue-exchange" key={turn.id}>
-                  <p className="user-bubble"><span>你</span>{turn.userMessage}</p>
-                  <p className="stage-bubble"><span>{current.label}</span>{turn.stageReply}</p>
-                </div>
-              ))}
-            </div>
-          )}
-          <form className="ask-stage-form" onSubmit={askStage}>
-            <label htmlFor={`ask-${current.id}`}>继续问{current.label}</label>
-            <div><input id={`ask-${current.id}`} value={message} onChange={(event) => setMessage(event.target.value)} placeholder="例如：你当时最怕失去什么？" maxLength={400} /><button disabled={dialogueBusy || message.trim().length < 2}>{dialogueBusy ? '…' : '发送'}</button></div>
-            {dialogueError && <p className="inline-error" role="alert">{dialogueError}</p>}
-          </form>
+        <article className="action-share-card">
+          <header><b>7</b><span><small>DAY EXPERIMENT</small><strong>一个可逆的小实验</strong></span></header>
+          <p>{council.action}</p>
+          <small>目标不是证明答案正确，而是获得一块现实证据。</small>
+          <button onClick={onShare}>分享行动卡 ↗</button>
+          {shareState && <em>{shareState}</em>}
         </article>
-        <div className="voice-progress">{active + 1} / {council.responses.length}</div>
-      </section>
 
-      <section className="synthesis-card">
-        <span className="kicker">COUNCIL NOTES</span>
-        <h2>议会没有替你投票，它找到了拉扯</h2>
-        <dl>
-          <div><dt>共同在保护</dt><dd>{council.synthesis.common}</dd></div>
-          <div><dt>真正的冲突</dt><dd>{council.synthesis.conflict}</dd></div>
-          <div><dt>还缺的证据</dt><dd>{council.synthesis.missing}</dd></div>
-          <div><dt>怎么判断</dt><dd>{council.synthesis.decisionFrame}</dd></div>
-        </dl>
-      </section>
-
-      <section className="experiment-card">
-        <div className="experiment-top"><span>7</span><div><small>DAY EXPERIMENT</small><h2>先做一个可逆实验</h2></div></div>
-        <p>{council.action}</p>
-        <div className="experiment-rule">目标不是证明某个答案正确，而是获得一块现实证据。</div>
-      </section>
-
-      <form className="feedback-card" onSubmit={saveFeedback}>
-        <span className="kicker">PRIVATE BETA FEEDBACK</span>
-        <h2>这次议会真的帮到你了吗？</h2>
-        <p>你的反馈会直接决定这个产品是否继续开发。</p>
-        <div className="score-row" aria-label="帮助程度评分">
-          {[1, 2, 3, 4, 5].map((value) => <button type="button" key={value} className={score === value ? 'active' : ''} onClick={() => setScore(value)}>{value}</button>)}
+        <div className="micro-feedback">
+          <strong>这次真的帮到你了吗？</strong>
+          <div className="score-buttons">{[1, 2, 3, 4, 5].map((value) => <button key={value} className={score === value ? 'selected' : ''} onClick={() => setScore(value)}>{value}</button>)}</div>
+          <label><input type="checkbox" checked={wouldReturn} onChange={(event) => setWouldReturn(event.target.checked)} />下次遇到重大选择，我还会回来</label>
+          <textarea value={note} onChange={(event) => setNote(event.target.value)} rows={2} placeholder="7 天后发生了什么？可回来更新" maxLength={800} />
+          <button className="feedback-save" onClick={saveFeedback} disabled={!score || saved}>{saved ? '已保存，谢谢你' : '保存反馈'}</button>
         </div>
-        <label className="toggle-row"><input type="checkbox" checked={wouldReturn} onChange={(event) => setWouldReturn(event.target.checked)} /><span>下次遇到重大选择，我还会回来用</span></label>
-        <label><span>7 天后发生了什么 / 哪里不像你</span><textarea value={note} onChange={(event) => setNote(event.target.value)} rows={3} placeholder="可现在写，也可以做完实验后再回来更新" maxLength={800} /></label>
-        <button className="primary-button" disabled={!score || busy || saved}>{saved ? '已保存，谢谢你' : busy ? '保存中…' : '保存反馈'}</button>
-      </form>
-      <button className="plain-footer-button" onClick={onBack}>回到今天</button>
-    </main>
+      </section>
+    </div>
   );
 }
 
-function Settings({ token, profile, onBack, onEdit, onDeleted }: { token: string; profile: Profile; onBack: () => void; onEdit: () => void; onDeleted: () => void }) {
+function Settings({ token, profile, onBack, onEdit, onDeleted }: {
+  token: string;
+  profile: Profile;
+  onBack: () => void;
+  onEdit: () => void;
+  onDeleted: () => void;
+}) {
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [busy, setBusy] = useState(false);
-  const initials = useMemo(() => profile.name.slice(0, 1), [profile.name]);
+  const stageCount = useMemo(() => profile.stages.length, [profile.stages.length]);
 
   async function exportData() {
     const response = await fetch(`/api/data?visitorToken=${encodeURIComponent(token)}`);
     const data = await response.json();
     if (!response.ok) return;
     const url = URL.createObjectURL(new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' }));
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `回声-我的数据-${new Date().toISOString().slice(0, 10)}.json`;
-    link.click();
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = `回声-我的资料-${new Date().toISOString().slice(0, 10)}.json`;
+    anchor.click();
     URL.revokeObjectURL(url);
   }
 
@@ -496,36 +612,34 @@ function Settings({ token, profile, onBack, onEdit, onDeleted }: { token: string
   }
 
   return (
-    <main className="app-shell settings-shell">
-      <header className="topbar"><button className="back-button" onClick={onBack}>← 返回</button><span className="trust-label">资料控制</span></header>
-      <section className="profile-summary"><div className="profile-large">{initials}</div><h1>{profile.name}</h1><p>{profile.currentAge} 岁 · {profile.stages.length} 段人生记忆</p></section>
-      <section className="settings-list">
-        <button onClick={onEdit}><span><strong>编辑人生线</strong><small>修改阶段、记忆与价值</small></span><b>→</b></button>
-        <button onClick={exportData}><span><strong>导出我的资料</strong><small>下载可读的 JSON 文件</small></span><b>↓</b></button>
+    <main className="phone-app settings-screen">
+      <header className="simple-topbar"><button onClick={onBack}>←</button><strong>我的资料</strong><span /></header>
+      <section className="profile-lite"><div>{profile.name.slice(0, 1)}</div><h1>{profile.name}</h1><p>{profile.currentAge} 岁 · {stageCount} 段真实记忆</p></section>
+      <section className="settings-actions">
+        <button onClick={onEdit}><span><strong>补充人生线</strong><small>修改年龄、记忆和价值</small></span><b>→</b></button>
+        <button onClick={exportData}><span><strong>导出我的资料</strong><small>下载完整可读文件</small></span><b>↓</b></button>
       </section>
-      <section className="boundary-card settings-boundary"><strong>隐私与安全</strong><p>资料存放在产品数据库，浏览器只保存随机设备凭证。未来情景不是预测；本产品不提供医疗或心理咨询。</p></section>
-      <section className="danger-zone">
-        <h2>删除所有资料</h2>
-        <p>将永久删除人生阶段、历次议会、反馈和匿名事件，无法恢复。</p>
-        <button onClick={deleteData} disabled={busy} className={confirmDelete ? 'confirm' : ''}>{busy ? '正在删除…' : confirmDelete ? '再次点击，永久删除' : '删除我的全部资料'}</button>
-        {confirmDelete && <button className="cancel-delete" onClick={() => setConfirmDelete(false)}>取消</button>}
+      <section className="privacy-lite"><strong>资料与边界</strong><p>资料保存在产品数据库，浏览器只保留随机设备凭证。未来情景不是预测；本产品不替代心理咨询或医疗服务。</p></section>
+      <section className="delete-lite">
+        <strong>删除全部资料</strong><p>人生阶段、议会、对话和反馈会被永久删除，无法恢复。</p>
+        <button className={confirmDelete ? 'confirm' : ''} onClick={deleteData} disabled={busy}>{busy ? '正在删除…' : confirmDelete ? '再次点击，永久删除' : '删除我的全部资料'}</button>
+        {confirmDelete && <button className="cancel" onClick={() => setConfirmDelete(false)}>取消</button>}
       </section>
     </main>
   );
 }
 
-function AvatarRow() {
-  return <div className="council-avatars" aria-hidden="true"><span>18</span><span>25</span><span>今</span><span>+3</span></div>;
+function LoadingScreen({ label }: { label: string }) {
+  return <main className="phone-app center-state"><div className="pulse-logo">回</div><p>{label}</p></main>;
 }
 
-function BottomNav({ onHome, onNew, onCouncil, onSettings }: { onHome: () => void; onNew: () => void; onCouncil: () => void; onSettings: () => void }) {
+function CreatingScreen({ question }: { question: string }) {
   return (
-    <nav className="bottom-nav" aria-label="主要导航">
-      <button className="selected" onClick={onHome}><span>⌂</span>今天</button>
-      <button onClick={() => document.getElementById('timeline-title')?.scrollIntoView()}><span>◌</span>人生线</button>
-      <button aria-label="新议会" onClick={onNew}><span>＋</span></button>
-      <button onClick={onCouncil}><span>□</span>决策</button>
-      <button onClick={onSettings}><span>·</span>我的</button>
-    </nav>
+    <main className="phone-app center-state creating-state">
+      <div className="orbit"><span>18</span><span>25</span><span>今</span><span>+3</span><b>回</b></div>
+      <h1>正在召集<br />不同阶段的你</h1>
+      <p>“{question}”</p>
+      <small>过去只引用真实记忆 · 未来只是情景推演</small>
+    </main>
   );
 }
