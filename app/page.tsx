@@ -105,7 +105,7 @@ function timeAgo(date: string) {
 }
 
 function Logo() {
-  return <span className="lite-logo"><b>回</b><span><strong>回声</strong><small>和每一岁的我重逢</small></span></span>;
+  return <span className="lite-logo"><b>回</b><span><strong>回声</strong><small>LIFE, IN YOUR OWN VOICE</small></span></span>;
 }
 
 export default function Home() {
@@ -287,16 +287,16 @@ function AskScreen({ profile, council, question, feeling, error, onQuestion, onF
     <main className="phone-app ask-screen">
       <header className="lite-topbar">
         <Logo />
-        {profile ? <button className="round-icon" onClick={onSettings} aria-label="打开我的记忆匣">{profile.name.slice(0, 1)}</button> : <span className="beta-pill">女性共创内测</span>}
+        {profile ? <button className="round-icon" onClick={onSettings} aria-label="打开我的记忆匣">{profile.name.slice(0, 1)}</button> : <span className="beta-pill">私人体验</span>}
       </header>
 
       <section className="ask-main">
-        <div className="time-chip"><span />给一路走到今天的你</div>
+        <div className="time-chip"><span />写给一路走到今天的你</div>
         <h1>{profile ? `${profile.name}，今晚，` : '今晚，'}和不同年龄的自己<br /><em>坐下来聊一会儿。</em></h1>
         <p>不是让一个 AI 替你回答。是让那些走过爱、失去、选择与重来的你，重新把力量还给现在的你。</p>
 
         <section className="life-thread-card" aria-label="我的人生阶段">
-          <div className="thread-heading"><span>轻触她，听一句话</span><small>你的一生，不止一种声音</small></div>
+          <div className="thread-heading"><span>选择一个人生章节</span><small>轻触，听见她</small></div>
           <div className="life-thread">
             <i className="thread-line" aria-hidden="true" />
             {lifeMoments.map((moment, index) => (
@@ -337,7 +337,7 @@ function AskScreen({ profile, council, question, feeling, error, onQuestion, onF
             {prompts.map((prompt) => <button type="button" key={prompt} onClick={() => onQuestion(prompt)}>{prompt}</button>)}
           </div>
           {error && <p className="lite-error" role="alert">{error}</p>}
-          <button className="main-cta" disabled={question.trim().length < 4}><span className="cta-heart">♥</span>让她们给我回一封信 <span>→</span></button>
+          <button className="main-cta" disabled={question.trim().length < 4}>开始这次对话 <span>→</span></button>
         </form>
 
         <div className="trust-strip">
@@ -513,7 +513,7 @@ function CouncilChat({ council, token, onBack, onTrack }: {
   async function shareAction() {
     const text = `今晚，我和不同年龄的自己聊了一会儿。\n\n我终于说出口：${council.question}\n\n接下来七天，我想为自己做一件小事：${council.action}\n\n答案可以慢一点来，但我不会再把自己的声音弄丢。`;
     try {
-      if (navigator.share) await navigator.share({ title: '写给未来的我', text });
+      if (navigator.share) await navigator.share({ title: '今晚的回声', text });
       else {
         await navigator.clipboard.writeText(text);
         setShareState('已复制，愿意的话，可以分享到小红书');
@@ -686,14 +686,14 @@ function Settings({ token, profile, onBack, onEdit, onDeleted }: {
 }
 
 function LoadingScreen({ label }: { label: string }) {
-  return <main className="phone-app center-state"><div className="pulse-logo"><i />回</div><p>{label}</p><small>那些走过的路，都没有白费</small></main>;
+  return <main className="phone-app center-state"><div className="pulse-logo">回</div><p>{label}</p><small>那些走过的路，都没有白费</small></main>;
 }
 
 function CreatingScreen({ question }: { question: string }) {
   return (
     <main className="phone-app center-state creating-state">
-      <div className="orbit"><span>18</span><span>25</span><span>今</span><span>+3</span><b>回</b></div>
-      <h1>她们正从记忆里，<br />慢慢走向你。</h1>
+      <div className="chapter-loading" aria-hidden="true"><span>18</span><i /><span>25</span><i /><span>今</span><i /><span>+3</span></div>
+      <h1>正在整理你一路走来的声音。</h1>
       <p>“{question}”</p>
       <small>过去只带来她经历过的事 · 未来只是一种可能</small>
     </main>
