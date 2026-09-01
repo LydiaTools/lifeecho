@@ -51,6 +51,11 @@ type Council = {
 
 type Screen = 'loading' | 'ask' | 'setup' | 'creating' | 'council' | 'settings';
 
+type InstallPromptEvent = Event & {
+  prompt: () => Promise<void>;
+  userChoice: Promise<{ outcome: 'accepted' | 'dismissed'; platform: string }>;
+};
+
 const prompts = ['我已经很努力，为什么还是想逃？', '这段关系让我越来越不像自己', '我想重新开始，又怕来不及'];
 const feelings = [
   { label: '有点累', tone: 'coral' },
@@ -105,7 +110,7 @@ function timeAgo(date: string) {
 }
 
 function Logo() {
-  return <span className="lite-logo"><b>回</b><span><strong>回声</strong><small>LIFE, IN YOUR OWN VOICE</small></span></span>;
+  return <span className="lite-logo"><strong>回声</strong><small>人生中的每一个我</small></span>;
 }
 
 export default function Home() {
@@ -148,6 +153,12 @@ export default function Home() {
         setScreen('ask');
       });
   }, [token]);
+
+  useEffect(() => {
+    if ('serviceWorker' in navigator) {
+      void navigator.serviceWorker.register('/sw.js').catch(() => undefined);
+    }
+  }, []);
 
   async function begin(event?: FormEvent) {
     event?.preventDefault();
@@ -268,6 +279,27 @@ function AskScreen({ profile, council, question, feeling, error, onQuestion, onF
   onSettings: () => void;
 }) {
   const [previewStage, setPreviewStage] = useState(profile ? 2 : 0);
+  const [installPrompt, setInstallPrompt] = useState<InstallPromptEvent | null>(null);
+  useEffect(() => {
+    const capturePrompt = (event: Event) => {
+      event.preventDefault();
+      setInstallPrompt(event as InstallPromptEvent);
+    };
+    const installed = () => setInstallPrompt(null);
+    window.addEventListener('beforeinstallprompt', capturePrompt);
+    window.addEventListener('appinstalled', installed);
+    return () => {
+      window.removeEventListener('beforeinstallprompt', capturePrompt);
+      window.removeEventListener('appinstalled', installed);
+    };
+  }, []);
+
+  async function installApp() {
+    if (!installPrompt) return;
+    await installPrompt.prompt();
+    const choice = await installPrompt.userChoice;
+    if (choice.outcome === 'accepted') setInstallPrompt(null);
+  }
   const lifeMoments = profile ? [
     ...profile.stages.slice(0, 3).map((stage, index) => ({
       age: stage.ageLabel,
@@ -287,13 +319,13 @@ function AskScreen({ profile, council, question, feeling, error, onQuestion, onF
     <main className="phone-app ask-screen">
       <header className="lite-topbar">
         <Logo />
-        {profile ? <button className="round-icon" onClick={onSettings} aria-label="打开我的记忆匣">{profile.name.slice(0, 1)}</button> : <span className="beta-pill">私人体验</span>}
+        {profile ? <button className="round-icon" onClick={onSettings} aria-label="打开我的记忆匣">{profile.name.slice(0, 1)}</button> : <span className="beta-pill">仅你可见</span>}
       </header>
 
       <section className="ask-main">
         <div className="time-chip"><span />写给一路走到今天的你</div>
-        <h1>{profile ? `${profile.name}，今晚，` : '今晚，'}和不同年龄的自己<br /><em>坐下来聊一会儿。</em></h1>
-        <p>不是让一个 AI 替你回答。是让那些走过爱、失去、选择与重来的你，重新把力量还给现在的你。</p>
+        <h1>{profile ? `${profile.name}，` : ''}答案不在远方。<br /><em>它藏在你走过的路里。</em></h1>
+        <p>让那些经历过爱、失去、选择与重来的你，回到此刻，把曾经拥有过的力量重新交还给你。</p>
 
         <section className="life-thread-card" aria-label="我的人生阶段">
           <div className="thread-heading"><span>选择一个人生章节</span><small>轻触，听见她</small></div>
@@ -343,6 +375,12 @@ function AskScreen({ profile, council, question, feeling, error, onQuestion, onF
         <div className="trust-strip">
           <span>无需注册</span><i /> <span>只有你看得到</span><i /> <span>约 2 分钟</span>
         </div>
+        {installPrompt && (
+          <button className="install-prompt" type="button" onClick={installApp}>
+            <span><strong>安装“回声”到手机</strong><small>添加到安卓桌面，下次直接打开</small></span>
+            <b>安装</b>
+          </button>
+        )}
       </section>
 
       {council && (

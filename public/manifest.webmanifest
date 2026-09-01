@@ -1,0 +1,20 @@
+{
+  "id": "/",
+  "name": "回声｜和不同年龄的自己对话",
+  "short_name": "回声",
+  "description": "一个为女性而做的人生阶段对话空间。让过去、现在和未来的自己，把一路走来的力量还给你。",
+  "lang": "zh-CN",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#f5f5f7",
+  "theme_color": "#121216",
+  "categories": ["lifestyle", "productivity"],
+  "prefer_related_applications": false,
+  "icons": [
+    { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
