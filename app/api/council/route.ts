@@ -15,13 +15,18 @@ function clean(value: unknown, max: number) {
   return String(value ?? '').trim().replace(/\s+/g, ' ').slice(0, max);
 }
 
-function stageStatement(stage: StageRow, question: string, index: number) {
+function stageStatement(stage: StageRow, question: string, index: number, feeling: string) {
   const memory = clean(stage.memory, 96);
-  const openings = ['我那时最怕把自己困在别人的答案里。', '我已经知道，硬撑和坚持不是同一件事。', '我更在意这次选择是否忠于你真正重视的东西。'];
-  return `关于“${question}”，${openings[index % openings.length]}在「${stage.title}」那段经历里，你记得：${memory}。如果仍把“${stage.value}”放在心里，先看清什么会因此得到、什么会因此失去。`;
+  const heard = feeling ? `我听见你说，你现在${feeling}。` : '我听见你终于把这件事说出来了。';
+  const letters = [
+    `先别催自己马上坚强。那时在「${stage.title}」里，你经历过：${memory}。你不是因为不害怕才往前走，而是因为心里还有“${stage.value}”不想弄丢。关于“${question}”，先问问自己：哪一种选择，会让你更像那个真实的你？`,
+    `我已经知道，硬撑和坚持不是同一件事。你记得「${stage.title}」那段日子：${memory}。它教会你的，不是凡事都要忍住，而是“${stage.value}”值得被认真照顾。这一次，也别只计算别人会不会失望。`,
+    `我想先抱抱已经撑了很久的你。你曾在「${stage.title}」里写下：${memory}。如果“${stage.value}”还是你心里重要的东西，就允许自己诚实一点：留下和离开，哪一种代价会让你慢慢失去自己？`,
+  ];
+  return `${heard}${letters[index % letters.length]}`;
 }
 
-function buildCouncil(question: string, stages: StageRow[]) {
+function buildCouncil(question: string, stages: StageRow[], feeling: string) {
   const rule = categories.find((item) => item.pattern.test(question)) ?? {
     name: '自我方向',
     action: '设计一个连续 7 天、每天 20 分钟、可以随时撤回的小实验，用真实感受代替脑内猜测。',
@@ -32,8 +37,8 @@ function buildCouncil(question: string, stages: StageRow[]) {
     label: stage.stage_type === 'present' ? '现在的我' : `${stage.age_label} 岁的我`,
     role: stage.title,
     kind: stage.stage_type,
-    statement: stageStatement(stage, question, index),
-    source: `来自你记录的「${stage.title}」：${clean(stage.memory, 58)}`,
+    statement: stageStatement(stage, question, index, feeling),
+    source: `她记得你亲手留下的「${stage.title}」：${clean(stage.memory, 58)}`,
   }));
 
   const values = [...new Set(stages.slice(0, 3).map((stage) => stage.value))];
@@ -43,16 +48,16 @@ function buildCouncil(question: string, stages: StageRow[]) {
       label: '+3 年 · 改变之后',
       role: '可能情景 A',
       kind: 'future',
-      statement: `假设你为“${question}”选择了改变：三年后的价值不在于证明当初正确，而在于你是否获得了更接近“${values[0] ?? '真实'}”的生活证据。代价可能是短期不确定，你需要提前设计缓冲。`,
-      source: '基于当前问题的情景推演，不是预测，也不是已发生的记忆。',
+      statement: `如果我真的是那个在“${question}”之后选择改变、走到三年后的你，我不会回来告诉你“你选对了”。我只想让你知道：不确定会让人害怕，但它也可能把你带回更接近“${values[0] ?? '真实'}”的生活。你不必孤注一掷，可以先为自己准备一小块安全的落脚地。`,
+      source: '这是根据你此刻的选择写出的一种可能，不是预测，也不是承诺。',
     },
     {
       id: 'future-stay',
       label: '+3 年 · 维持之后',
       role: '可能情景 B',
       kind: 'future',
-      statement: `假设你维持现状：稳定本身不是失败，但必须明确它为“${values.at(-1) ?? '重要关系'}”换来了什么。最大的风险不是留下，而是把没有决定误当成了决定。`,
-      source: '基于当前问题的情景推演，不是预测，也不是已发生的记忆。',
+      statement: `如果我是那个选择暂时留下、走到三年后的你，我不会责怪今天的你胆小。留下也可以是一种有意识的选择，只要它真的在保护“${values.at(-1) ?? '你在乎的人和事'}”。我更担心的，是你一边说再等等，一边把自己的感受越放越远。`,
+      source: '这是根据你此刻的选择写出的一种可能，不是预测，也不是已发生的记忆。',
     },
   ];
 
@@ -60,10 +65,10 @@ function buildCouncil(question: string, stages: StageRow[]) {
     category: rule.name,
     responses: [...grounded, ...future],
     synthesis: {
-      common: `不同阶段都在保护同一件事：${values.slice(0, 3).join('、') || '你真正重视的生活'}。`,
-      conflict: `真正的拉扯不是简单的“做或不做”，而是${rule.tension}之间如何取舍。`,
-      missing: '目前最缺的不是更多观点，而是一小块来自现实的证据。',
-      decisionFrame: '先问：哪一个选项的代价虽然不舒服，但更值得承担？再用一周实验验证，而不是今天逼自己终局表态。',
+      common: `不管几岁的你，都在保护这些没有变过的东西：${values.slice(0, 3).join('、') || '你真正想过的生活'}。`,
+      conflict: `你不是不够果断。你只是同时舍不得${rule.tension}里的两边，所以每走一步都像在告别什么。`,
+      missing: '今晚不用逼自己作最终决定。你缺的不是勇气，只是一小块能让心安静下来的现实证据。',
+      decisionFrame: '先问自己：哪一种代价虽然会疼，却不会让我越来越不像自己？然后用七天验证，不在今晚逼自己决定一生。',
     },
     action: rule.action,
   };
@@ -108,9 +113,10 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
-  const body = await request.json() as { visitorToken?: string; question?: string };
+  const body = await request.json() as { visitorToken?: string; question?: string; feeling?: string };
   const token = clean(body.visitorToken, 200);
   const question = clean(body.question, 180);
+  const feeling = clean(body.feeling, 20);
   if (token.length < 20 || question.length < 4) return Response.json({ error: '请写下一个更具体的真实选择' }, { status: 400 });
   if (unsafePattern.test(question)) {
     return Response.json({
@@ -124,7 +130,7 @@ export async function POST(request: Request) {
   const profile = await findProfile(hash);
   if (!profile) return Response.json({ error: '请先完成人生阶段建档' }, { status: 404 });
   const stages = await loadStages(profile.id);
-  const result = buildCouncil(question, stages);
+  const result = buildCouncil(question, stages, feeling);
   const id = crypto.randomUUID();
   const createdAt = new Date().toISOString();
   await database()

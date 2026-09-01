@@ -7,10 +7,10 @@ function clean(value: unknown, max: number) {
 }
 
 function focusFor(message: string, value: string) {
-  if (/(怕|担心|不敢|风险|失去)/.test(message)) return `先把确定会失去的，和只是想象会失去的分开。对我来说，“${value}”比避免一切不舒服更重要。`;
-  if (/(后悔|错|选错)/.test(message)) return `真正需要防的未必是选错，而是重复一段你已经知道不适合自己的模式。问问哪一种代价更值得承担。`;
-  if (/(怎么|如何|第一步)/.test(message)) return `先走一个可撤回的小步骤，不要把试验误当成终局承诺。做完后只记录事实，不急着解释。`;
-  return `我会把问题缩小成一句：这个选择会不会让你更靠近“${value}”，同时愿意承担它真实的代价？`;
+  if (/(怕|担心|不敢|风险|失去)/.test(message)) return `害怕不代表你不够勇敢。先把真的会失去什么，和心里想象会失去什么，分开写下来。对那时的我来说，“${value}”比假装什么都不在乎更重要。`;
+  if (/(后悔|错|选错)/.test(message)) return `我也怕过后悔。可后来才明白，比选错更难过的，是明明已经听见自己的声音，又把它按了回去。问问自己：哪一种代价虽然会疼，却更值得？`;
+  if (/(怎么|如何|第一步)/.test(message)) return `不用一下子走很远。先做一件随时可以停下的小事，做完以后只问自己：身体有没有松一点，心里有没有亮一点。`;
+  return `如果只留一个问题给你，我想问：这条路会不会让你更靠近“${value}”，也更认得出镜子里的自己？`;
 }
 
 export async function POST(request: Request) {
@@ -44,7 +44,7 @@ export async function POST(request: Request) {
 
   let reply: string;
   if (response.kind === 'future') {
-    reply = `我只是“${response.role}”，不是你的真实未来，所以无法保证会发生什么。对于你问的“${message}”，我建议先定义一个可观察信号：如果它出现，你会更相信这个情景；如果没有出现，就及时修正。未来分支的价值是帮助你准备，不是替你预测。`;
+    reply = `我是你想象中三年后的一个可能，不敢骗你说结局一定会这样。可你问我“${message}”，我想先陪你把它变小一点：找一个接下来七天就能看见的信号。它出现了，我们就多相信这条路一点；没有出现，也可以停下来重新选。未来不是来催你的，是来告诉你——你始终还有选择。`;
   } else {
     const stageId = Number(stageKey.replace('stage-', ''));
     const stage = await database()
@@ -52,8 +52,8 @@ export async function POST(request: Request) {
       .bind(stageId, profile.id)
       .first<{ title: string; memory: string; value: string; stage_type: string }>();
     if (!stage) return Response.json({ error: '找不到这个人生阶段' }, { status: 404 });
-    const boundary = stage.stage_type === 'past' ? '我只知道那时已经发生的事，不知道你后来的经历。' : '我会只使用你写下的现在处境。';
-    reply = `${boundary}站在「${stage.title}」这段人生里，关于你追问的“${message}”：${focusFor(message, stage.value)}这不是替你决定，而是从那段记忆里照回来的问题。`;
+    const boundary = stage.stage_type === 'past' ? '我只记得那时的我们，不知道你后来又一个人走过了多少路。' : '我就是此刻的你，所以我知道你已经撑了很久。';
+    reply = `${boundary}可站在「${stage.title}」这段人生里，听见你问“${message}”，我想对你说：${focusFor(message, stage.value)}我不会替你决定，只想把你那时没有弄丢的那点光，再递回给你。`;
   }
 
   const createdAt = new Date().toISOString();
