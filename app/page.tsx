@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { FormEvent } from 'react';
 
 type Stage = {
@@ -102,6 +102,20 @@ function getDeviceToken() {
   return created;
 }
 
+function getAcquisitionSource() {
+  const key = 'lifeecho-acquisition-source';
+  const params = new URLSearchParams(window.location.search);
+  const raw = params.get('source') ?? params.get('utm_source');
+  const campaign = params.get('campaign') ?? params.get('utm_campaign');
+  const candidate = [raw, campaign].filter(Boolean).join('_').replace(/[^a-zA-Z0-9_-]/g, '-').slice(0, 60);
+  try {
+    if (candidate) window.localStorage.setItem(key, candidate);
+    return candidate || window.localStorage.getItem(key) || 'direct';
+  } catch {
+    return candidate || 'direct';
+  }
+}
+
 function timeAgo(date: string) {
   const days = Math.max(0, Math.floor((Date.now() - new Date(date).getTime()) / 86_400_000));
   if (days === 0) return '今天';
@@ -115,6 +129,7 @@ function Logo() {
 
 export default function Home() {
   const [token] = useState(() => typeof window === 'undefined' ? '' : getDeviceToken());
+  const [acquisitionSource] = useState(() => typeof window === 'undefined' ? 'direct' : getAcquisitionSource());
   const [screen, setScreen] = useState<Screen>('loading');
   const [profile, setProfile] = useState<Profile | null>(null);
   const [council, setCouncil] = useState<Council | null>(null);
@@ -123,14 +138,14 @@ export default function Home() {
   const [error, setError] = useState('');
   const [editing, setEditing] = useState(false);
 
-  function track(eventName: string, payload: Record<string, unknown> = {}) {
+  const track = useCallback((eventName: string, payload: Record<string, unknown> = {}) => {
     if (!token) return;
     void fetch('/api/event', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ visitorToken: token, eventName, payload }),
+      body: JSON.stringify({ visitorToken: token, eventName, payload: { ...payload, acquisitionSource } }),
     });
-  }
+  }, [acquisitionSource, token]);
 
   useEffect(() => {
     const id = token || getDeviceToken();
@@ -142,17 +157,13 @@ export default function Home() {
         setProfile(profileData.profile ?? null);
         setCouncil(councilData.council ?? null);
         setScreen('ask');
-        void fetch('/api/event', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ visitorToken: id, eventName: 'light_entry', payload: { returning: Boolean(profileData.profile) } }),
-        });
+        track('light_entry', { returning: Boolean(profileData.profile) });
       })
       .catch(() => {
         setError('暂时无法连接，请刷新后重试。');
         setScreen('ask');
       });
-  }, [token]);
+  }, [token, track]);
 
   useEffect(() => {
     if ('serviceWorker' in navigator) {
