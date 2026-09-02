@@ -3,8 +3,8 @@ import './globals.css';
 
 export const metadata: Metadata = {
   applicationName: '回声',
-  title: '回声｜和不同年龄的自己，坐下来聊一会儿',
-  description: '一个为女性而做的人生阶段对话空间。无需注册，让过去、现在和未来的自己，把一路走来的力量还给你。',
+  title: '回声｜你不是突然走到今天的',
+  description: '一个为女性而做的人生阶段对话空间。和一路走来的自己重新站在一起，把曾经拥有过的力量交还给现在的你。',
   metadataBase: new URL('https://huisheng-life-council-2026.manonloki.chatgpt.site'),
   manifest: '/manifest.webmanifest',
   icons: {
@@ -14,16 +14,16 @@ export const metadata: Metadata = {
   appleWebApp: { capable: true, statusBarStyle: 'black-translucent', title: '回声' },
   formatDetection: { telephone: false },
   openGraph: {
-    title: '回声｜和不同年龄的自己，坐下来聊一会儿',
-    description: '不是让 AI 替你回答，而是让一路走来的自己，把力量还给现在的你。',
+    title: '回声｜你不是突然走到今天的',
+    description: '和人生不同阶段的自己，重新站在一起。',
     locale: 'zh_CN',
     type: 'website',
     images: [{ url: '/og.png', width: 1732, height: 908, alt: '回声人生阶段对话产品' }],
   },
   twitter: {
     card: 'summary_large_image',
-    title: '回声｜和不同年龄的自己，坐下来聊一会儿',
-    description: '一个为女性而做的人生阶段对话空间，无需注册，约 2 分钟。',
+    title: '回声｜你不是突然走到今天的',
+    description: '和人生不同阶段的自己，重新站在一起。',
     images: ['/og.png'],
   },
 };
@@ -33,7 +33,7 @@ export const viewport: Viewport = {
   initialScale: 1,
   maximumScale: 1,
   viewportFit: 'cover',
-  themeColor: '#f5f5f7',
+  themeColor: '#fbf7fa',
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {

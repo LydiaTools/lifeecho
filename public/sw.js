@@ -1,5 +1,5 @@
-const CACHE_NAME = 'lifeecho-shell-v1';
-const SHELL = ['/', '/favicon.svg', '/icon-192.png', '/icon-512.png', '/icon-maskable-512.png'];
+const CACHE_NAME = 'lifeecho-shell-v2';
+const SHELL = ['/', '/favicon.svg', '/icon-192.png', '/icon-512.png', '/icon-maskable-512.png', '/lifeecho-hero.webp'];
 
 self.addEventListener('install', (event) => {
   event.waitUntil(caches.open(CACHE_NAME).then((cache) => cache.addAll(SHELL)).then(() => self.skipWaiting()));

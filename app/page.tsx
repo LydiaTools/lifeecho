@@ -323,12 +323,20 @@ function AskScreen({ profile, council, question, feeling, error, onQuestion, onF
       </header>
 
       <section className="ask-main">
-        <div className="time-chip"><span />写给一路走到今天的你</div>
-        <h1>{profile ? `${profile.name}，` : ''}答案不在远方。<br /><em>它藏在你走过的路里。</em></h1>
-        <p>让那些经历过爱、失去、选择与重来的你，回到此刻，把曾经拥有过的力量重新交还给你。</p>
+        <section className="emotional-hero">
+          <div className="hero-image" aria-hidden="true" />
+          <div className="hero-copy">
+            <div className="time-chip"><span />写给一路走到今天的你</div>
+            <h1>{profile ? `${profile.name}，` : ''}你不是突然<br />走到今天的。</h1>
+            <p>你曾经勇敢过，也曾一个人熬过很长的夜。那些一路走来的你，没有离开。</p>
+          </div>
+          <div className="hero-stage-trail" aria-hidden="true"><span>18</span><i /><span>25</span><i /><span>现在</span><i /><span>以后</span></div>
+        </section>
+
+        <div className="opening-note"><span>今晚，让她们回来陪你说说话。</span><p>有些答案，不在别人那里。它藏在你曾经作过的选择、失去过的人和重新站起来的时刻里。</p></div>
 
         <section className="life-thread-card" aria-label="我的人生阶段">
-          <div className="thread-heading"><span>选择一个人生章节</span><small>轻触，听见她</small></div>
+          <div className="thread-heading"><span>她们一直在这里</span><small>轻触，听见她</small></div>
           <div className="life-thread">
             <i className="thread-line" aria-hidden="true" />
             {lifeMoments.map((moment, index) => (
@@ -348,6 +356,7 @@ function AskScreen({ profile, council, question, feeling, error, onQuestion, onF
         </section>
 
         <form className="ask-card" onSubmit={onBegin}>
+          <div className="ask-card-intro"><span>今晚想说的话</span><strong>不用想清楚，先把它说出来。</strong></div>
           <fieldset className="feeling-picker">
             <legend>这一刻，你的心更接近哪一种？</legend>
             <div>{feelings.map((item) => (
@@ -369,7 +378,7 @@ function AskScreen({ profile, council, question, feeling, error, onQuestion, onF
             {prompts.map((prompt) => <button type="button" key={prompt} onClick={() => onQuestion(prompt)}>{prompt}</button>)}
           </div>
           {error && <p className="lite-error" role="alert">{error}</p>}
-          <button className="main-cta" disabled={question.trim().length < 4}>开始这次对话 <span>→</span></button>
+          <button className="main-cta" disabled={question.trim().length < 4}>让她们来见我 <span>→</span></button>
         </form>
 
         <div className="trust-strip">
